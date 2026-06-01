@@ -1,0 +1,8 @@
+{
+  "name": "wolai-semantic-search",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "sql.js": "^1.11.0"
+  }
+}
