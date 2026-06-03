@@ -2,7 +2,7 @@
 
 为 Claude Code 提供 Wolai 知识库的本地语义搜索能力。用自然语言模糊查找笔记，无需精确标题。
 
-> ⚠️ **前提条件**：本工具需要预先在 Claude Code 中安装并配置 [Wolai 官方 MCP 插件](https://github.com/Hornraven/wolai-mcp)，以提供基础的 Wolai API 对接能力。
+> ⚠️ **前提条件**：本工具需要预先在 Claude Code 中安装并配置 Wolai 官方 MCP，以提供基础的 Wolai API 对接能力。
 
 ## 原理
 
@@ -29,7 +29,7 @@ data/
 
 - Node.js ≥ 18
 - [Ollama](https://ollama.com) + nomic-embed-text 模型
-- [Wolai 官方 MCP 插件](https://github.com/Hornraven/wolai-mcp)（已在 Claude Code 中配置）
+- Wolai 官方 MCP（已在 Claude Code 中配置）
 
 ## 安装
 
