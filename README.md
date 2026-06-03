@@ -2,7 +2,7 @@
 
 为 Claude Code 提供 Wolai 知识库的本地语义搜索能力。用自然语言模糊查找笔记，无需精确标题。
 
-> ⚠️ **前提条件**：本工具需要预先在 Claude Code 中安装并配置 Wolai 官方 MCP，以提供基础的 Wolai API 对接能力。
+> ⚠️ **前提条件**：本工具需要预先在 Claude Code 中配置 Wolai 官方 MCP 服务，以提供基础的 Wolai API 对接能力。具体配置方式见下方说明。
 
 ## 原理
 
@@ -29,7 +29,18 @@ data/
 
 - Node.js ≥ 18
 - [Ollama](https://ollama.com) + nomic-embed-text 模型
-- Wolai 官方 MCP（已在 Claude Code 中配置）
+- Wolai 官方 MCP（见下方配置说明）
+
+## 配置 Wolai MCP
+
+1. 在 Wolai 设置 → MCP 接入中，点击「创建 Token」生成凭证，**复制保存 Token**
+2. 在 Claude Code 中添加 MCP 服务：
+
+```bash
+claude mcp add --transport sse wolai https://api.wolai.com/v1/mcp \
+  --header "Authorization: Bearer 你的Token" \
+  --scope user
+```
 
 ## 安装
 
@@ -41,7 +52,7 @@ npm install
 # 下载 embedding 模型
 ollama pull nomic-embed-text
 
-# 创建 .env 写入 Wolai API Token
+# 创建 .env 写入 Wolai Token（在 Wolai 设置 → MCP 接入中创建）
 echo "WOLAI_TOKEN=你的token" > .env
 ```
 
