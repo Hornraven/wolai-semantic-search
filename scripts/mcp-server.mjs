@@ -38,24 +38,11 @@ async function handleMessage(msg) {
         sendResponse(id, {
           protocolVersion: "2024-11-05",
           capabilities: {
-            tools: {
-              semantic_search: {
-                description: "混合搜索 Wolai 知识库（语义+全文+关键词），支持模糊描述查找笔记",
-                inputSchema: {
-                  type: "object",
-                  properties: {
-                    query: { type: "string", description: "搜索关键词或模糊描述" },
-                    limit: { type: "number", description: "返回结果数量，默认 5", default: 5 },
-                    exclude_page_ids: { type: "array", items: { type: "string" }, description: "排除的 page_id，默认排除「网页」剪藏页", default: ["fBP45AGmSer4pw2qVsCPyF"] },
-                  },
-                  required: ["query"],
-                },
-              },
-              index_status: {
-                description: "查看搜索索引状态（已索引页面数、分块数、最后索引时间）",
-                inputSchema: { type: "object", properties: {} },
-              },
-            },
+            tools: {},  // server supports tools — actual definitions in tools/list
+          },
+          serverInfo: {
+            name: "wolai-semantic-search",
+            version: "1.0.0",
           },
         });
         break;
