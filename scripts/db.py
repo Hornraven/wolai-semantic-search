@@ -9,8 +9,11 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
+import os
+
 DB_PATH = Path(__file__).parent.parent / "data" / "vectors.db"
 OLLAMA_URL = "http://127.0.0.1:11434/api/embed"
+EMBEDDING_MODEL = os.environ.get("OLLAMA_EMBED_MODEL", "qwen3-embedding:0.6b")
 
 # ── Database ──────────────────────────────────────────────
 
@@ -98,7 +101,7 @@ def backfill_fts(db: sqlite3.Connection) -> int:
 
 def get_embedding(text: str) -> list[float]:
     """调用 Ollama 获取文本向量。"""
-    body = json.dumps({"model": "nomic-embed-text", "input": text}).encode()
+    body = json.dumps({"model": EMBEDDING_MODEL, "input": text}).encode()
     req = urllib.request.Request(OLLAMA_URL, data=body,
         headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req) as resp:
@@ -108,7 +111,7 @@ def get_embedding(text: str) -> list[float]:
 
 def get_embeddings(batch: list[str]) -> list[list[float]]:
     """批量获取向量。"""
-    body = json.dumps({"model": "nomic-embed-text", "input": batch}).encode()
+    body = json.dumps({"model": EMBEDDING_MODEL, "input": batch}).encode()
     req = urllib.request.Request(OLLAMA_URL, data=body,
         headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req) as resp:
