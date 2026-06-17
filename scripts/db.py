@@ -247,6 +247,10 @@ def fulltext_search(db: sqlite3.Connection, query: str,
     terms = re.findall(r'[a-zA-Z0-9]+|[一-鿿぀-ゟ゠-ヿ]+', sanitized)
     fts_query = ' OR '.join(terms) if len(terms) > 1 else sanitized
 
+    # 短 ASCII 查询用前缀匹配：'nas' → 'nas*'（避免匹配 monastic）
+    if len(terms) == 1 and re.fullmatch(r'[a-zA-Z0-9]{1,3}', terms[0]):
+        fts_query = terms[0] + '*'
+
     try:
         rows = db.execute(
             "SELECT c.id, c.page_id, c.title, c.chunk_index, c.chunk_text, "
@@ -255,19 +259,25 @@ def fulltext_search(db: sqlite3.Connection, query: str,
             "JOIN chunks c ON c.id = fts_content.rowid "
             "WHERE fts_content MATCH ? "
             "ORDER BY bm25_score LIMIT ?",
-            (fts_query, limit)
+            (fts_query, limit * 3)
         ).fetchall()
     except sqlite3.OperationalError:
         return []
 
+    # page_id 去重 + BM25 排名
     results = []
+    seen = set()
     for i, row in enumerate(rows):
-        results.append({
-            "id": row["id"], "page_id": row["page_id"], "title": row["title"],
-            "chunk_index": row["chunk_index"], "chunk_text": row["chunk_text"],
-            "score": -row["bm25_score"],  # BM25: lower = better, flip sign
-            "rank": i + 1,
-        })
+        if row["page_id"] not in seen:
+            seen.add(row["page_id"])
+            results.append({
+                "id": row["id"], "page_id": row["page_id"], "title": row["title"],
+                "chunk_index": row["chunk_index"], "chunk_text": row["chunk_text"],
+                "score": -row["bm25_score"],  # BM25: lower = better, flip sign
+                "rank": i + 1,
+            })
+            if len(results) >= limit:
+                break
     return results
 
 
