@@ -329,55 +329,56 @@ def _levenshtein_ratio(s1: str, s2: str) -> float:
 
 def fuzzy_search(db: sqlite3.Connection, query: str,
                  limit: int = 10, min_score: float = 0.3) -> list[dict]:
-    """模糊搜索：用 trigram containment 匹配标题，容忍拼写错误。
+    """模糊搜索：trigram containment + Levenshtein 并行匹配标题。
 
-    - 只在标题上匹配（照搬 Obsidian 设计），避免正文噪音
-    - 'obsidan' → 标题含 'Obsidian' 的页面（3/5 trigrams 命中 → 0.6）
-    - 'clode' → 标题含 'Claude' 的页面（'ode' 命中 'Code' → 0.33）
-    - 'clode' → 标题 'blender'（0 trigrams 命中 → 0.0）✅ 不误匹配
-    - 'MCP' → 标题含 'MCP' 的页面（1.0），不返回正文碰巧有 MCP 的无关页面
+    Trigram 处理常见拼写错误（'obsidan'→'Obsidian'），Levenshtein 处理零重叠
+    极端情况（'clode'→'Claude'）。Levenshtein 分数 ×0.7 以免覆盖 trigram 强匹配。
     """
     sanitized = query.strip().lower()
     if not sanitized or len(sanitized) < 2:
         return []
 
-    # 去重 title（同一页面的不同子页面有不同 title，不能只按 page_id 去重）
     rows = db.execute(
         "SELECT DISTINCT page_id, title FROM chunks ORDER BY LENGTH(title) DESC"
     ).fetchall()
 
     scored = []
+    lev_min = 0.5  # Levenshtein 最低阈值
+    lev_dampen = 0.7  # Levenshtein 降权（编辑距离不如 trigram 可靠）
+
     for row in rows:
         title = row["title"] or ""
         page_id = row["page_id"]
-        score = _trigram_similarity(sanitized, title)
-        if score >= min_score:
+
+        tri_score = _trigram_similarity(sanitized, title)
+        if tri_score >= min_score:
             scored.append({
                 "id": 0, "page_id": page_id, "title": title,
-                "chunk_index": 0, "chunk_text": title, "score": score,
+                "chunk_index": 0, "chunk_text": title, "score": tri_score,
             })
 
-    scored.sort(key=lambda r: r["score"], reverse=True)
-
-    # 兜底：如果 trigram 没找到，用编辑距离再试（处理 'clode'→'Claude' 这种零重叠极端情况）
-    if not scored and len(sanitized) >= 3:
-        rows2 = db.execute(
-            "SELECT DISTINCT page_id, title FROM chunks ORDER BY LENGTH(title) DESC"
-        ).fetchall()
-        for row in rows2:
-            pid = row["page_id"]
-            title = row["title"] or ""
+        # Levenshtein 并行运行，不依赖 trigram 结果
+        if len(sanitized) >= 3 and tri_score < min_score:
             lev_score = _levenshtein_ratio(sanitized, title)
-            if lev_score >= 0.5:
+            if lev_score >= lev_min:
                 scored.append({
-                    "id": 0, "page_id": pid, "title": title,
+                    "id": 0, "page_id": page_id, "title": title,
                     "chunk_index": 0, "chunk_text": title,
-                    "score": lev_score,
+                    "score": lev_score * lev_dampen,
                 })
 
-    for i, r in enumerate(scored[:limit]):
+    # page_id 去重取最高分
+    scored.sort(key=lambda r: r["score"], reverse=True)
+    seen = set()
+    deduped = []
+    for r in scored:
+        if r["page_id"] not in seen:
+            seen.add(r["page_id"])
+            deduped.append(r)
+
+    for i, r in enumerate(deduped[:limit]):
         r["rank"] = i + 1
-    return scored[:limit]
+    return deduped[:limit]
 
 
 # ── RRF 融合 ──────────────────────────────────────────────
