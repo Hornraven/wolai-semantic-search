@@ -158,23 +158,46 @@ def get_indexed_pages(db: sqlite3.Connection) -> dict[str, dict]:
     return {r["page_id"]: dict(r) for r in rows}
 
 
+# ── Embedding cache (avoid JSON parse + DB read on every query) ─
+
+_EMB_CACHE: Optional[list[tuple]] = None  # [(id, page_id, title, chunk_index, chunk_text, vec_list)]
+
+def cache_embeddings(db: sqlite3.Connection) -> int:
+    """把全量 embedding 加载到内存，后续查询免 DB 读取和 JSON 解析。返回缓存条数。"""
+    global _EMB_CACHE
+    rows = db.execute(
+        "SELECT id, page_id, title, chunk_index, chunk_text, embedding "
+        "FROM chunks WHERE embedding IS NOT NULL"
+    ).fetchall()
+    _EMB_CACHE = [(r["id"], r["page_id"], r["title"], r["chunk_index"],
+                   r["chunk_text"], json.loads(r["embedding"])) for r in rows]
+    return len(_EMB_CACHE)
+
+def invalidate_cache() -> None:
+    """索引更新后清除缓存，下次搜索时自动重建。"""
+    global _EMB_CACHE
+    _EMB_CACHE = None
+
 # ── Three search paths ────────────────────────────────────
 
 def semantic_search(db: sqlite3.Connection, query_vec: list[float],
                     limit: int = 10) -> list[dict]:
     """向量语义搜索：余弦相似度排序。"""
-    rows = db.execute(
-        "SELECT id, page_id, title, chunk_index, chunk_text, embedding "
-        "FROM chunks WHERE embedding IS NOT NULL"
-    ).fetchall()
-    if not rows:
+    global _EMB_CACHE
+    if _EMB_CACHE is None:
+        cache_embeddings(db)
+
+    if not _EMB_CACHE:
         return []
 
     scored = []
-    for row in rows:
-        emb = json.loads(row["embedding"])
-        score = cosine_similarity(query_vec, emb)
-        scored.append({**dict(row), "score": score})
+    for row_id, page_id, title, chunk_index, chunk_text, emb_vec in _EMB_CACHE:
+        score = cosine_similarity(query_vec, emb_vec)
+        scored.append({
+            "id": row_id, "page_id": page_id, "title": title,
+            "chunk_index": chunk_index, "chunk_text": chunk_text,
+            "score": score,
+        })
 
     scored.sort(key=lambda r: r["score"], reverse=True)
 

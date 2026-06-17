@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from db import (
     get_db, get_embeddings, insert_chunk, set_index_meta, get_indexed_pages,
-    backfill_fts
+    backfill_fts, invalidate_cache
 )
 
 # ── Config ────────────────────────────────────────────────
@@ -441,20 +441,32 @@ def main():
     total_chunks = 0
     processed = 0
 
-    for i in range(0, len(all_to_process), CONCURRENCY):
-        batch = all_to_process[i:i + CONCURRENCY]
-        for page in batch:
+    # 并发索引：每个线程独立 db connection（sqlite3 不能跨线程）
+    import concurrent.futures
+
+    def _index_one(page):
+        """单个页面索引：独立 db connection，线程安全。"""
+        tdb = get_db()
+        try:
+            return index_page(tdb, page["id"], page["title"])
+        finally:
+            tdb.close()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as ex:
+        future_to_page = {ex.submit(_index_one, p): p for p in all_to_process}
+        for future in concurrent.futures.as_completed(future_to_page):
+            page = future_to_page[future]
             try:
-                chunks = index_page(db, page["id"], page["title"])
+                chunks = future.result()
                 total_chunks += chunks
                 print(f"  {page['title'] or page['id']}... {chunks} chunks")
             except Exception as e:
                 print(f"  {page['title'] or page['id']}... SKIP: {e}")
             processed += 1
             if processed % 20 == 0:
-                db.commit()
+                print(f"  [{processed}/{len(all_to_process)}]")
 
-    db.commit()
+    invalidate_cache()
 
     pc = db.execute("SELECT COUNT(*) FROM index_meta").fetchone()[0]
     cc = db.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]

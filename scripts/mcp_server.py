@@ -18,19 +18,23 @@ from pathlib import Path
 
 # 把 scripts/ 父目录加入 path，以便 import db
 sys.path.insert(0, str(Path(__file__).parent))
-from db import get_db, hybrid_search, backfill_fts
+from db import get_db, hybrid_search, backfill_fts, cache_embeddings
 
 
 def main():
     db = get_db()
 
-    # 检测是否需要回填 FTS5 索引（旧数据没有 FTS5 记录）
+    # 预热 embedding 缓存（省去首次查询的 ~7s JSON 加载）
     fts_count = db.execute("SELECT COUNT(*) FROM fts_content").fetchone()[0]
     chunk_count = db.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
-    if chunk_count > 0 and fts_count == 0:
-        print(f"[wolai-semantic-search] Backfilling {chunk_count} chunks into FTS5 index...", file=sys.stderr, flush=True)
-        n = backfill_fts(db)
-        print(f"[wolai-semantic-search] Backfilled {n} chunks into FTS5.", file=sys.stderr, flush=True)
+    if chunk_count > 0:
+        if fts_count == 0:
+            print(f"[wolai-semantic-search] Backfilling {chunk_count} chunks into FTS5 index...", file=sys.stderr, flush=True)
+            n = backfill_fts(db)
+            print(f"[wolai-semantic-search] Backfilled {n} chunks into FTS5.", file=sys.stderr, flush=True)
+        print(f"[wolai-semantic-search] Warming embedding cache ({chunk_count} chunks)...", file=sys.stderr, flush=True)
+        n = cache_embeddings(db)
+        print(f"[wolai-semantic-search] Cache warm: {n} vectors.", file=sys.stderr, flush=True)
 
     buffer = ""
     for line in sys.stdin:
