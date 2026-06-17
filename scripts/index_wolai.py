@@ -32,7 +32,8 @@ def load_token() -> str:
 TOKEN = load_token()
 API_URL = "https://api.wolai.com/v1/mcp/"
 CONCURRENCY = 5
-DASHBOARD_ID = "kKEsWsXDv2KBEFHWqse15a"
+# 可选：指定一个入口页面，其子页面会被优先发现。设为 None 则跳过。
+DASHBOARD_ID = os.environ.get("WOLAI_DASHBOARD_ID") or None
 
 req_seq = 0
 
@@ -289,51 +290,43 @@ def discover_all_pages() -> list[dict]:
     except Exception as e:
         print(f"  list_docs: {e}")
 
-    # 2. Dashboard (Claude)
-    if DASHBOARD_ID not in visited:
-        visited.add(DASHBOARD_ID)
-        all_pages.append({"id": DASHBOARD_ID, "title": "Claude"})
+    # 2. 入口页及其父/子页面（如果配置了 DASHBOARD_ID）
+    if DASHBOARD_ID:
+        if DASHBOARD_ID not in visited:
+            visited.add(DASHBOARD_ID)
+            all_pages.append({"id": DASHBOARD_ID, "title": "Claude"})
 
-    # 3. Dashboard 的父页面 (Library)
-    try:
-        dash_info = call_tool("get_doc", {"doc_id": DASHBOARD_ID})
-        doc = dash_info.get("document", {})
-        parent_id = doc.get("parent_id")
-        parent_type = doc.get("parent_type")
-        if parent_id and parent_type != "workspace" and parent_id not in visited:
-            try:
-                parent_doc = call_tool("get_doc", {"doc_id": parent_id})
-                parent_title = "Library"
-                content = (parent_doc.get("document") or {}).get("content") or []
-                if content:
-                    parent_title = content[0].get("title", "Library")
-                visited.add(parent_id)
-                all_pages.append({"id": parent_id, "title": parent_title})
-            except Exception:
-                pass
-    except Exception:
-        pass
+        # 入口页的父页面
+        try:
+            dash_info = call_tool("get_doc", {"doc_id": DASHBOARD_ID})
+            doc = dash_info.get("document", {})
+            parent_id = doc.get("parent_id")
+            parent_type = doc.get("parent_type")
+            if parent_id and parent_type != "workspace" and parent_id not in visited:
+                try:
+                    parent_doc = call_tool("get_doc", {"doc_id": parent_id})
+                    parent_title = "Library"
+                    content = (parent_doc.get("document") or {}).get("content") or []
+                    if content:
+                        parent_title = content[0].get("title", "Library")
+                    visited.add(parent_id)
+                    all_pages.append({"id": parent_id, "title": parent_title})
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
-    # 4. Dashboard 的直接子页面
-    try:
-        dash_blocks = call_tool("get_page_blocks", {"page_id": DASHBOARD_ID})
-        for b in dash_blocks:
-            if b.get("type") in ("page", "child_page"):
-                pid = b["id"]
-                if pid and pid not in visited:
-                    visited.add(pid)
-                    all_pages.append({"id": pid, "title": extract_block_text(b) or ""})
-    except Exception as e:
-        print(f"  dashboard: {e}")
-
-    # 5. 已知页面补充
-    EXTRA = [
-        {"id": "4DatK4FC1eijQHSPq41qBP", "title": "软件"},
-    ]
-    for ep in EXTRA:
-        if ep["id"] not in visited:
-            visited.add(ep["id"])
-            all_pages.append(ep)
+        # 入口页的直接子页面
+        try:
+            dash_blocks = call_tool("get_page_blocks", {"page_id": DASHBOARD_ID})
+            for b in dash_blocks:
+                if b.get("type") in ("page", "child_page"):
+                    pid = b["id"]
+                    if pid and pid not in visited:
+                        visited.add(pid)
+                        all_pages.append({"id": pid, "title": extract_block_text(b) or ""})
+        except Exception as e:
+            print(f"  dashboard: {e}")
 
     # 5.5 用 search_docs 补漏 — list_docs 只返回 25 条，大量页面会被截断
     # 从已知页面标题中自动提取高频字符作为搜索种子（语言无关，英文/中文/日文均适用）

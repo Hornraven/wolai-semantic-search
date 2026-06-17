@@ -115,8 +115,7 @@ def handle_message(db, msg: dict):
                                 "exclude_page_ids": {
                                     "type": "array",
                                     "items": {"type": "string"},
-                                    "description": "排除的 page_id 列表",
-                                    "default": ["fBP45AGmSer4pw2qVsCPyF"]
+                                    "description": "排除的 page_id 列表（可选）"
                                 }
                             },
                             "required": ["query"]
@@ -142,7 +141,7 @@ def handle_message(db, msg: dict):
                 if not query:
                     raise ValueError("query is required")
                 limit = args.get("limit", 5)
-                exclude = args.get("exclude_page_ids", ["fBP45AGmSer4pw2qVsCPyF"])
+                exclude = args.get("exclude_page_ids", [])
 
                 t0 = time.time()
                 results = hybrid_search(db, query, limit, exclude)
