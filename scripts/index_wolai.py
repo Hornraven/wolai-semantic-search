@@ -335,6 +335,36 @@ def discover_all_pages() -> list[dict]:
             visited.add(ep["id"])
             all_pages.append(ep)
 
+    # 5.5 用 search_docs 补漏 — list_docs 只返回 25 条，大量页面会被截断
+    # 从已知页面标题中自动提取高频字符作为搜索种子（语言无关，英文/中文/日文均适用）
+    if len(visited) <= 50:
+        # 收集已知标题中的字符频率，取 TOP 20 作为种子
+        from collections import Counter
+        char_freq = Counter()
+        for p in all_pages:
+            for ch in p.get("title", ""):
+                if ch.strip() and not ch.isspace():
+                    char_freq[ch] += 1
+        seeds = [ch for ch, _ in char_freq.most_common(20)] if char_freq else list("aesito")
+        print(f"  Search supplement: {len(seeds)} seed chars from existing titles ({len(visited)} known)...")
+        import concurrent.futures
+        def _search_one(ch):
+            try:
+                return call_tool("search_docs", {"query": ch, "title_only": True, "limit": 100})
+            except Exception:
+                return []
+        found_count = 0
+        with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as ex:
+            for results in ex.map(_search_one, seeds):
+                for r in results:
+                    pid = r.get("id") or r.get("page_id")
+                    title = r.get("title", "")
+                    if pid and pid not in visited:
+                        visited.add(pid)
+                        all_pages.append({"id": pid, "title": title})
+                        found_count += 1
+        print(f"  Found {found_count} new pages, {len(visited)} total after supplement.")
+
     # 6. 扫描子页面
     to_scan = [p for p in all_pages if not p.get("_scanned")]
     for i in range(0, len(to_scan), CONCURRENCY):

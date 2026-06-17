@@ -288,7 +288,7 @@ def _levenshtein_ratio(s1: str, s2: str) -> float:
 
 
 def fuzzy_search(db: sqlite3.Connection, query: str,
-                 limit: int = 10, min_score: float = 0.45) -> list[dict]:
+                 limit: int = 10, min_score: float = 0.3) -> list[dict]:
     """模糊搜索：用 trigram containment 匹配标题，容忍拼写错误。
 
     - 只在标题上匹配（照搬 Obsidian 设计），避免正文噪音
