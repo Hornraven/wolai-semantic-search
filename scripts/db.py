@@ -230,23 +230,6 @@ def semantic_search(db: sqlite3.Connection, query_vec: list[float],
         })
 
     scored.sort(key=lambda r: r["score"], reverse=True)
-
-    # 兜底：如果 trigram 没找到，用编辑距离再试（处理 'clode'→'Claude' 这种零重叠极端情况）
-    if not scored and len(sanitized) >= 3:
-        rows2 = db.execute(
-            "SELECT DISTINCT page_id, title FROM chunks ORDER BY LENGTH(title) DESC"
-        ).fetchall()
-        for row in rows2:
-            pid = row["page_id"]
-            title = row["title"] or ""
-            lev_score = _levenshtein_ratio(sanitized, title)
-            if lev_score >= 0.5:
-                scored.append({
-                    "id": 0, "page_id": pid, "title": title,
-                    "chunk_index": 0, "chunk_text": title,
-                    "score": lev_score,
-                })
-
     for i, r in enumerate(scored[:limit]):
         r["rank"] = i + 1
     return scored[:limit]
@@ -254,11 +237,15 @@ def semantic_search(db: sqlite3.Connection, query_vec: list[float],
 
 def fulltext_search(db: sqlite3.Connection, query: str,
                     limit: int = 10) -> list[dict]:
-    """FTS5 全文搜索：BM25 排名。"""
-    # FTS5 MATCH 语法：用 * 做前缀匹配，双引号做短语
+    """FTS5 全文搜索：BM25 排名。中英混合查询自动拆分为 OR。"""
     sanitized = query.replace('"', '').strip()
     if not sanitized:
         return []
+
+    # 拆分中英混合查询：'python函数' → 'python OR 函数'
+    import re
+    terms = re.findall(r'[a-zA-Z0-9]+|[一-鿿぀-ゟ゠-ヿ]+', sanitized)
+    fts_query = ' OR '.join(terms) if len(terms) > 1 else sanitized
 
     try:
         rows = db.execute(
@@ -268,7 +255,7 @@ def fulltext_search(db: sqlite3.Connection, query: str,
             "JOIN chunks c ON c.id = fts_content.rowid "
             "WHERE fts_content MATCH ? "
             "ORDER BY bm25_score LIMIT ?",
-            (sanitized, limit)
+            (fts_query, limit)
         ).fetchall()
     except sqlite3.OperationalError:
         return []
