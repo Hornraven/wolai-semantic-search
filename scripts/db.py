@@ -5,6 +5,7 @@ Python 内置 sqlite3 原生支持 FTS5 trigram，无需任何外部依赖。
 import json
 import math
 import sqlite3
+import struct
 import urllib.request
 from pathlib import Path
 from typing import Optional
@@ -134,10 +135,11 @@ def insert_chunk(db: sqlite3.Connection, page_id: str, title: str,
                  chunk_index: int, chunk_text: str, embedding: list[float]) -> int:
     text = chunk_text.replace("\0", "")  # SQLite 不接受 null 字节
     now = int(__import__("time").time())
+    blob = struct.pack(f'{len(embedding)}f', *embedding)  # BLOB: 每个 float 4 字节
     cur = db.execute(
         "INSERT INTO chunks (page_id, title, chunk_index, chunk_text, embedding, updated_at) "
         "VALUES (?, ?, ?, ?, ?, ?)",
-        (page_id, title, chunk_index, text, json.dumps(embedding), now)
+        (page_id, title, chunk_index, text, blob, now)
     )
     db.commit()
     return cur.lastrowid
@@ -162,21 +164,49 @@ def get_indexed_pages(db: sqlite3.Connection) -> dict[str, dict]:
 
 _EMB_CACHE: Optional[list[tuple]] = None  # [(id, page_id, title, chunk_index, chunk_text, vec_list)]
 
+def _deserialize_vec(raw) -> list[float]:
+    """兼容 struct BLOB（新）和 JSON TEXT（旧）两种格式。"""
+    if isinstance(raw, bytes):
+        return list(struct.unpack(f'{len(raw)//4}f', raw))
+    return json.loads(raw)
+
+
 def cache_embeddings(db: sqlite3.Connection) -> int:
-    """把全量 embedding 加载到内存，后续查询免 DB 读取和 JSON 解析。返回缓存条数。"""
+    """把全量 embedding 加载到内存。BLOB 格式省 ~60% 空间和 JSON 解析开销。"""
     global _EMB_CACHE
     rows = db.execute(
         "SELECT id, page_id, title, chunk_index, chunk_text, embedding "
         "FROM chunks WHERE embedding IS NOT NULL"
     ).fetchall()
     _EMB_CACHE = [(r["id"], r["page_id"], r["title"], r["chunk_index"],
-                   r["chunk_text"], json.loads(r["embedding"])) for r in rows]
+                   r["chunk_text"], _deserialize_vec(r["embedding"])) for r in rows]
     return len(_EMB_CACHE)
 
 def invalidate_cache() -> None:
     """索引更新后清除缓存，下次搜索时自动重建。"""
     global _EMB_CACHE
     _EMB_CACHE = None
+
+
+def migrate_embeddings_to_blob(db: sqlite3.Connection) -> int:
+    """将旧 JSON TEXT 格式 embedding 转为 BLOB，省 ~60% 存储 + 免 json.loads。
+    幂等——已转过的跳过。返回转换条数。"""
+    rows = db.execute(
+        "SELECT id, embedding FROM chunks WHERE embedding IS NOT NULL AND typeof(embedding)='text'"
+    ).fetchall()
+    count = 0
+    for row in rows:
+        try:
+            vec = json.loads(row["embedding"])
+            blob = struct.pack(f'{len(vec)}f', *vec)
+            db.execute("UPDATE chunks SET embedding=? WHERE id=?", (blob, row["id"]))
+            count += 1
+        except Exception:
+            pass
+    if count:
+        db.commit()
+        invalidate_cache()
+    return count
 
 # ── Three search paths ────────────────────────────────────
 

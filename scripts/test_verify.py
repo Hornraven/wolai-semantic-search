@@ -6,6 +6,7 @@
 """
 import json
 import sqlite3
+import struct
 import sys
 import tempfile
 import urllib.request
@@ -70,22 +71,22 @@ def seed_db(db):
     items = [
         ("page_1", "Auto Memory", 0,
          "Auto Memory 功能让 Claude 自动记住用户偏好和上下文信息",
-         json.dumps([0.1] * 1024)),
+         struct.pack('1024f', *([0.1]*1024))),
         ("page_1", "Auto Memory", 1,
          "配置方法：在 CLAUDE.md 中添加 memory 指令",
-         json.dumps([0.2] * 1024)),
+         struct.pack('1024f', *([0.2]*1024))),
         ("page_2", "Claude Code 插件系统", 0,
          "Claude Code 支持通过 MCP 协议扩展功能，包括文件操作、搜索等",
-         json.dumps([0.3] * 1024)),
+         struct.pack('1024f', *([0.3]*1024))),
         ("page_2", "Claude Code 插件系统", 1,
          "安装插件：claude plugins install <name>，支持 GitHub 和 npm",
-         json.dumps([0.4] * 1024)),
+         struct.pack('1024f', *([0.4]*1024))),
         ("page_3", "Obsidian 知识管理", 0,
          "Obsidian 使用本地 Markdown 文件管理知识，支持双向链接和图谱视图",
-         json.dumps([0.5] * 1024)),
+         struct.pack('1024f', *([0.5]*1024))),
         ("page_4", "UE5 光照烘焙", 0,
          "静态光照烘焙使用 Lightmass，需要设置 Lightmap Resolution",
-         json.dumps([0.6] * 1024)),
+         struct.pack('1024f', *([0.6]*1024))),
     ]
     import time
     now = int(time.time())

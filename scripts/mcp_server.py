@@ -18,7 +18,7 @@ from pathlib import Path
 
 # 把 scripts/ 父目录加入 path，以便 import db
 sys.path.insert(0, str(Path(__file__).parent))
-from db import get_db, hybrid_search, backfill_fts, cache_embeddings
+from db import get_db, hybrid_search, backfill_fts, cache_embeddings, migrate_embeddings_to_blob
 
 
 def main():
@@ -32,6 +32,10 @@ def main():
             print(f"[wolai-semantic-search] Backfilling {chunk_count} chunks into FTS5 index...", file=sys.stderr, flush=True)
             n = backfill_fts(db)
             print(f"[wolai-semantic-search] Backfilled {n} chunks into FTS5.", file=sys.stderr, flush=True)
+        # 旧 JSON 格式 → BLOB（省 60% 空间 + 省 json.loads）
+        migrated = migrate_embeddings_to_blob(db)
+        if migrated:
+            print(f"[wolai-semantic-search] Migrated {migrated} embeddings JSON→BLOB.", file=sys.stderr, flush=True)
         print(f"[wolai-semantic-search] Warming embedding cache ({chunk_count} chunks)...", file=sys.stderr, flush=True)
         n = cache_embeddings(db)
         print(f"[wolai-semantic-search] Cache warm: {n} vectors.", file=sys.stderr, flush=True)
