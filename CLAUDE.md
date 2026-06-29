@@ -39,6 +39,7 @@ python scripts/test_verify.py    # 14 项可执行验证
 - **Ollama** — 本地运行，默认 `qwen3-embedding:0.6b`，见 `.env.example` 切换
 - **Wolai MCP** — 注册在 Claude Code，提供页面读写 API
 - **`.env`** — `WOLAI_TOKEN` + 可选 `WOLAI_DASHBOARD_ID`、`OLLAMA_EMBED_MODEL`
+  > ⚠️ **公开仓库提醒：** `.env` 包含真实 API token，已在 `.gitignore` 中从未提交。若未来需要公开此仓库，确保不误提交 `.env`。
 
 ## Data
 
